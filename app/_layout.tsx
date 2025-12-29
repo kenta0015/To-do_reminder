@@ -51,8 +51,8 @@ export default function RootLayout() {
       };
 
       router.replace({
-        pathname: "/",
-        params: { highlightTaskId: taskId },
+        pathname: "/notification",
+        params: { taskId },
       });
     },
     [router]
@@ -80,6 +80,7 @@ export default function RootLayout() {
     <>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="notification" />
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="auto" />

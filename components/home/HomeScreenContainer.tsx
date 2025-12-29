@@ -1,10 +1,9 @@
 // FILE: components/home/HomeScreenContainer.tsx
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Keyboard, ScrollView, TextInput } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  addTask,
   completeTask,
   deleteTask,
   loadTasks,
@@ -12,7 +11,7 @@ import {
   Task,
   uncompleteTask,
 } from '@/lib/storage';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import {
   addDays,
@@ -28,7 +27,23 @@ import {
 import HomeScreenView, { SectionKey, TaskRowData } from './HomeScreenView';
 import { UndoData } from './UndoToast';
 
+declare global {
+  // eslint-disable-next-line no-var
+  var __todoReminderPendingNotificationAction:
+    | {
+        kind: 'change_time';
+        taskId: string;
+        timeHHmm: string;
+        requestedAt: number;
+      }
+    | undefined;
+}
+
 const IMPORTANT_IDS_KEY = '@important_task_ids_v1';
+
+// Must match app/notification.tsx
+const SNOOZE_NOTIF_ID_MAP_KEY = '@task_snooze_notif_id_v1';
+const SKIP_TODAY_MAP_KEY = '@task_skip_today_v1';
 
 function getRemindAtFromTask(task: Task): Date | null {
   try {
@@ -74,11 +89,64 @@ function toTimeMsFromISO(iso: unknown): number {
   return d.getTime();
 }
 
+function parseHHmm(input: string): { h: number; m: number } | null {
+  const s = input.trim();
+  const match = /^(\d{1,2}):(\d{2})$/.exec(s);
+  if (!match) return null;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  if (h < 0 || h > 23) return null;
+  if (m < 0 || m > 59) return null;
+  return { h, m };
+}
+
+async function readJsonObject(key: string): Promise<Record<string, string>> {
+  const raw = await AsyncStorage.getItem(key);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof k === 'string' && typeof v === 'string') out[k] = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+async function writeJsonObject(key: string, obj: Record<string, string>): Promise<void> {
+  await AsyncStorage.setItem(key, JSON.stringify(obj));
+}
+
+function roundToMinute(d: Date): Date {
+  const x = new Date(d);
+  x.setSeconds(0, 0);
+  return x;
+}
+
+function addMinutes(d: Date, minutes: number): Date {
+  return new Date(d.getTime() + minutes * 60_000);
+}
+
 export default function HomeScreenContainer() {
+  const router = useRouter();
   const params = useLocalSearchParams();
 
   const [tasks, setTasks] = useState<Task[]>([]);
+  const tasksRef = useRef<Task[]>([]);
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
+
   const [importantOrder, setImportantOrder] = useState<string[]>([]);
+  const importantOrderRef = useRef<string[]>([]);
+  useEffect(() => {
+    importantOrderRef.current = importantOrder;
+  }, [importantOrder]);
+
   const importantSet = useMemo(() => new Set(importantOrder), [importantOrder]);
 
   const [titleText, setTitleText] = useState('');
@@ -112,7 +180,7 @@ export default function HomeScreenContainer() {
   const showNavToast = (message: string): void => {
     setNavToast(message);
     setTimeout(() => {
-      setNavToast(curr => (curr === message ? null : curr));
+      setNavToast((curr) => (curr === message ? null : curr));
     }, 2200);
   };
 
@@ -126,8 +194,10 @@ export default function HomeScreenContainer() {
   const cancelScheduledNotificationsForTaskId = async (taskId: string): Promise<void> => {
     try {
       const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-      const targets = scheduled.filter(req => extractTaskIdFromNotification(req) === taskId);
-      await Promise.allSettled(targets.map(req => Notifications.cancelScheduledNotificationAsync(req.identifier)));
+      const targets = scheduled.filter((req) => extractTaskIdFromNotification(req) === taskId);
+      await Promise.allSettled(
+        targets.map((req) => Notifications.cancelScheduledNotificationAsync(req.identifier))
+      );
     } catch {
       // ignore
     }
@@ -169,7 +239,7 @@ export default function HomeScreenContainer() {
 
   const cleanupOrphanedTaskNotifications = async (loadedTasks: Task[]): Promise<void> => {
     try {
-      const byId = new Map(loadedTasks.map(t => [t.id, t]));
+      const byId = new Map(loadedTasks.map((t) => [t.id, t]));
       const scheduled = await Notifications.getAllScheduledNotificationsAsync();
 
       const toCancel: string[] = [];
@@ -185,7 +255,7 @@ export default function HomeScreenContainer() {
       }
 
       if (toCancel.length === 0) return;
-      await Promise.allSettled(toCancel.map(id => Notifications.cancelScheduledNotificationAsync(id)));
+      await Promise.allSettled(toCancel.map((id) => Notifications.cancelScheduledNotificationAsync(id)));
     } catch {
       // ignore
     }
@@ -204,7 +274,7 @@ export default function HomeScreenContainer() {
     if (idsJson) {
       try {
         const ids = JSON.parse(idsJson) as string[];
-        if (Array.isArray(ids)) setImportantOrder(ids.filter(x => typeof x === 'string'));
+        if (Array.isArray(ids)) setImportantOrder(ids.filter((x) => typeof x === 'string'));
       } catch {
         // ignore
       }
@@ -223,11 +293,11 @@ export default function HomeScreenContainer() {
   const toggleImportant = async (id: string): Promise<void> => {
     const isImp = importantSet.has(id);
     if (isImp) {
-      const next = importantOrder.filter(x => x !== id);
+      const next = importantOrder.filter((x) => x !== id);
       await persistImportantOrder(next);
       return;
     }
-    const next = [id, ...importantOrder.filter(x => x !== id)];
+    const next = [id, ...importantOrder.filter((x) => x !== id)];
     await persistImportantOrder(next);
   };
 
@@ -250,7 +320,7 @@ export default function HomeScreenContainer() {
       setNow(new Date());
     }, 30_000);
 
-    const sub = AppState.addEventListener('change', state => {
+    const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') setNow(new Date());
     });
 
@@ -269,7 +339,7 @@ export default function HomeScreenContainer() {
   const normalized = useMemo(() => {
     const result: TaskRowData[] = [];
 
-    tasks.forEach(t => {
+    tasks.forEach((t) => {
       const remindAt = getRemindAtFromTask(t);
       if (!remindAt) return;
 
@@ -281,37 +351,37 @@ export default function HomeScreenContainer() {
   }, [tasks]);
 
   const visibleIncomplete = useMemo(() => {
-    return normalized.filter(x => !x.task.completed && !isExpired(now, x.remindAt));
+    return normalized.filter((x) => !x.task.completed && !isExpired(now, x.remindAt));
   }, [normalized, now]);
 
   const lateTasks = useMemo(() => {
     return visibleIncomplete
-      .filter(x => x.dateKey < todayKey)
+      .filter((x) => x.dateKey < todayKey)
       .sort((a, b) => a.remindAt.getTime() - b.remindAt.getTime());
   }, [visibleIncomplete, todayKey]);
 
   const todayTasks = useMemo(() => {
     return visibleIncomplete
-      .filter(x => x.dateKey === todayKey)
+      .filter((x) => x.dateKey === todayKey)
       .sort((a, b) => a.remindAt.getTime() - b.remindAt.getTime());
   }, [visibleIncomplete, todayKey]);
 
   const tomorrowTasks = useMemo(() => {
     return visibleIncomplete
-      .filter(x => x.dateKey === tomorrowKey)
+      .filter((x) => x.dateKey === tomorrowKey)
       .sort((a, b) => a.remindAt.getTime() - b.remindAt.getTime());
   }, [visibleIncomplete, tomorrowKey]);
 
   const thisWeekByDay = useMemo(() => {
     const map: Record<string, TaskRowData[]> = {};
-    visibleIncomplete.forEach(x => {
+    visibleIncomplete.forEach((x) => {
       if (x.dateKey === todayKey || x.dateKey === tomorrowKey) return;
       if (!isKeyInRange(x.dateKey, weekStartKey, weekEndKey)) return;
       map[x.dateKey] = map[x.dateKey] ?? [];
       map[x.dateKey].push(x);
     });
 
-    Object.keys(map).forEach(k => {
+    Object.keys(map).forEach((k) => {
       map[k].sort((a, b) => a.remindAt.getTime() - b.remindAt.getTime());
     });
 
@@ -321,18 +391,243 @@ export default function HomeScreenContainer() {
   const completedTodayTasks = useMemo(() => {
     const today = todayKey;
     return tasks
-      .filter(t => t.completed && typeof t.completedAt === 'string')
-      .filter(t => toLocalDateKeyFromISO(t.completedAt) === today)
+      .filter((t) => t.completed && typeof t.completedAt === 'string')
+      .filter((t) => toLocalDateKeyFromISO(t.completedAt) === today)
       .sort((a, b) => toTimeMsFromISO(b.completedAt) - toTimeMsFromISO(a.completedAt));
   }, [tasks, todayKey]);
 
   const importantTasks = useMemo(() => {
-    const byId = new Map(tasks.map(t => [t.id, t]));
-    const aliveIds = importantOrder.filter(id => byId.has(id));
-    const result: Task[] = aliveIds.map(id => byId.get(id)!).filter(t => !t.completed);
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    const aliveIds = importantOrder.filter((id) => byId.has(id));
+    const result: Task[] = aliveIds.map((id) => byId.get(id)!).filter((t) => !t.completed);
 
     return result;
   }, [tasks, importantOrder]);
+
+  const changeUndoRef = useRef<{
+    oldTaskId: string;
+    oldTaskSnapshot: Task;
+    oldImportantIndex: number | null;
+    oldWasImportant: boolean;
+    newTaskId: string;
+  } | null>(null);
+
+  const actionHandledKeyRef = useRef<string | null>(null);
+
+  const applyNotificationActionIfAny = useCallback(
+    async (taskId: string): Promise<void> => {
+      const pending = globalThis.__todoReminderPendingNotificationAction;
+      const nowMinute = roundToMinute(new Date());
+
+      const currentTasks = tasksRef.current;
+      const currentImportantOrder = importantOrderRef.current;
+
+      const findTask = (): Task | null => currentTasks.find((t) => t.id === taskId) ?? null;
+
+      const setTasksAndPersist = async (nextTasks: Task[]): Promise<void> => {
+        setTasks(nextTasks);
+        await saveTasks(nextTasks);
+      };
+
+      const clearPending = (): void => {
+        if (globalThis.__todoReminderPendingNotificationAction?.taskId === taskId) {
+          globalThis.__todoReminderPendingNotificationAction = undefined;
+        }
+      };
+
+      // 1) Change time (highest priority)
+      if (pending && pending.kind === 'change_time' && pending.taskId === taskId) {
+        const key = `change_time:${taskId}:${pending.requestedAt}`;
+        if (actionHandledKeyRef.current === key) return;
+        actionHandledKeyRef.current = key;
+
+        const oldTask = findTask();
+        if (!oldTask) {
+          clearPending();
+          showNavToast('Task not found');
+          return;
+        }
+
+        const parsed = parseHHmm(pending.timeHHmm);
+        if (!parsed) {
+          clearPending();
+          showNavToast('Invalid time');
+          return;
+        }
+
+        const target = new Date(
+          nowMinute.getFullYear(),
+          nowMinute.getMonth(),
+          nowMinute.getDate(),
+          parsed.h,
+          parsed.m,
+          0,
+          0
+        );
+
+        if (target.getTime() <= nowMinute.getTime()) {
+          clearPending();
+          showNavToast('Time is in the past');
+          return;
+        }
+
+        clearPending();
+
+        // Create a new task (today fixed) + auto-complete old
+        const newId = `${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+        const createdAt = new Date().toISOString();
+        const newTask: Task = {
+          id: newId,
+          title: oldTask.title,
+          when: target.toISOString(),
+          completed: false,
+          createdAt,
+        };
+
+        const completedAt = new Date().toISOString();
+        const oldUpdated: Task = { ...oldTask, completed: true, completedAt };
+
+        const nextTasks = currentTasks
+          .map((t) => (t.id === oldTask.id ? oldUpdated : t))
+          .concat(newTask);
+
+        // Important inheritance: replace old id with new id if needed
+        const oldWasImportant = currentImportantOrder.includes(oldTask.id);
+        const oldImportantIndex = oldWasImportant ? currentImportantOrder.indexOf(oldTask.id) : null;
+
+        if (oldWasImportant && oldImportantIndex !== null && oldImportantIndex >= 0) {
+          const nextImportantOrder = [...currentImportantOrder];
+          nextImportantOrder[oldImportantIndex] = newId;
+          await persistImportantOrder(nextImportantOrder);
+        }
+
+        // Save + notifications
+        await cancelScheduledNotificationsForTaskId(oldTask.id);
+        await setTasksAndPersist(nextTasks);
+
+        await tryScheduleTaskNotification(newTask, { requestPermission: false });
+
+        // Undo support (reuse the existing "complete" undo UI)
+        changeUndoRef.current = {
+          oldTaskId: oldTask.id,
+          oldTaskSnapshot: { ...oldTask },
+          oldImportantIndex,
+          oldWasImportant,
+          newTaskId: newId,
+        };
+
+        setUndoData({ action: 'complete', task: oldTask } as unknown as UndoData);
+        setTimeout(() => {
+          setUndoData((curr) => {
+            const isSame = (curr as any)?.action === 'complete' && (curr as any)?.task?.id === oldTask.id;
+            if (isSame) {
+              changeUndoRef.current = null;
+              return null;
+            }
+            return curr;
+          });
+        }, 5000);
+
+        router.replace({ pathname: '/', params: { highlightTaskId: newId } });
+        return;
+      }
+
+      // 2) Skip today map (move to tomorrow same time)
+      try {
+        const skipMap = await readJsonObject(SKIP_TODAY_MAP_KEY);
+        const skipKey = skipMap[taskId];
+
+        if (skipKey) {
+          if (skipKey !== todayKey) {
+            delete skipMap[taskId];
+            await writeJsonObject(SKIP_TODAY_MAP_KEY, skipMap);
+          } else {
+            const key = `skip_today:${taskId}:${skipKey}`;
+            if (actionHandledKeyRef.current === key) return;
+            actionHandledKeyRef.current = key;
+
+            const t = findTask();
+            if (!t) {
+              delete skipMap[taskId];
+              await writeJsonObject(SKIP_TODAY_MAP_KEY, skipMap);
+              showNavToast('Task not found');
+              return;
+            }
+
+            const remindAt = getRemindAtFromTask(t);
+            if (!remindAt) {
+              delete skipMap[taskId];
+              await writeJsonObject(SKIP_TODAY_MAP_KEY, skipMap);
+              showNavToast('Task not found');
+              return;
+            }
+
+            const nextRemindAt = addDays(remindAt, 1);
+            nextRemindAt.setSeconds(0, 0);
+
+            const updated: Task = { ...t, when: nextRemindAt.toISOString() };
+            const nextTasks = currentTasks.map((x) => (x.id === t.id ? updated : x));
+
+            await cancelScheduledNotificationsForTaskId(t.id);
+            await setTasksAndPersist(nextTasks);
+            await tryScheduleTaskNotification(updated, { requestPermission: false });
+
+            delete skipMap[taskId];
+            await writeJsonObject(SKIP_TODAY_MAP_KEY, skipMap);
+
+            router.replace({ pathname: '/', params: { highlightTaskId: t.id } });
+            return;
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      // 3) Snooze map (move to now+10min and make Home reflect it)
+      try {
+        const snoozeMap = await readJsonObject(SNOOZE_NOTIF_ID_MAP_KEY);
+        const snoozeNotifId = snoozeMap[taskId];
+
+        if (snoozeNotifId) {
+          const key = `snooze:${taskId}:${snoozeNotifId}`;
+          if (actionHandledKeyRef.current === key) return;
+          actionHandledKeyRef.current = key;
+
+          const t = findTask();
+          if (!t) {
+            delete snoozeMap[taskId];
+            await writeJsonObject(SNOOZE_NOTIF_ID_MAP_KEY, snoozeMap);
+            showNavToast('Task not found');
+            return;
+          }
+
+          const nextRemindAt = roundToMinute(addMinutes(new Date(), 10));
+
+          const updated: Task = { ...t, when: nextRemindAt.toISOString() };
+          const nextTasks = currentTasks.map((x) => (x.id === t.id ? updated : x));
+
+          await cancelScheduledNotificationsForTaskId(t.id);
+          await setTasksAndPersist(nextTasks);
+          await tryScheduleTaskNotification(updated, { requestPermission: false });
+
+          delete snoozeMap[taskId];
+          await writeJsonObject(SNOOZE_NOTIF_ID_MAP_KEY, snoozeMap);
+
+          router.replace({ pathname: '/', params: { highlightTaskId: t.id } });
+          return;
+        }
+      } catch {
+        // ignore
+      }
+    },
+    [router, todayKey]
+  );
+
+  useEffect(() => {
+    if (!isReady) return;
+    if (!navTaskId) return;
+    void applyNotificationActionIfAny(navTaskId);
+  }, [applyNotificationActionIfAny, isReady, navTaskId]);
 
   useEffect(() => {
     if (!isReady) return;
@@ -342,15 +637,15 @@ export default function HomeScreenContainer() {
     if (lastHandledNavIdRef.current === id) return;
     lastHandledNavIdRef.current = id;
 
-    const isInLate = lateTasks.some(x => x.task.id === id);
-    const isInToday = todayTasks.some(x => x.task.id === id);
-    const isInTomorrow = tomorrowTasks.some(x => x.task.id === id);
-    const isInCompletedToday = completedTodayTasks.some(t => t.id === id);
+    const isInLate = lateTasks.some((x) => x.task.id === id);
+    const isInToday = todayTasks.some((x) => x.task.id === id);
+    const isInTomorrow = tomorrowTasks.some((x) => x.task.id === id);
+    const isInCompletedToday = completedTodayTasks.some((t) => t.id === id);
 
     let isInWeek = false;
     if (!isInLate && !isInToday && !isInTomorrow && !isInCompletedToday) {
       for (const k of Object.keys(thisWeekByDay)) {
-        if (thisWeekByDay[k]?.some(x => x.task.id === id)) {
+        if (thisWeekByDay[k]?.some((x) => x.task.id === id)) {
           isInWeek = true;
           break;
         }
@@ -369,7 +664,7 @@ export default function HomeScreenContainer() {
 
     const clearAfterMs = 2200;
     setTimeout(() => {
-      setHighlightTaskId(prev => (prev === id ? null : prev));
+      setHighlightTaskId((prev) => (prev === id ? null : prev));
     }, clearAfterMs);
 
     let targetY: number | undefined;
@@ -416,9 +711,17 @@ export default function HomeScreenContainer() {
       return;
     }
 
-    const created = await addTask(title, remindAt.toISOString());
-    const next = [...tasks, created];
+    const created: Task = {
+      id: `${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+      title,
+      when: remindAt.toISOString(),
+      completed: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    const next = [...tasksRef.current, created];
     setTasks(next);
+    await saveTasks(next);
 
     await tryScheduleTaskNotification(created, { requestPermission: true });
 
@@ -428,7 +731,7 @@ export default function HomeScreenContainer() {
 
     setHighlightTaskId(created.id);
     setTimeout(() => {
-      setHighlightTaskId(prev => (prev === created.id ? null : prev));
+      setHighlightTaskId((prev) => (prev === created.id ? null : prev));
     }, 1600);
 
     requestAnimationFrame(() => {
@@ -439,7 +742,9 @@ export default function HomeScreenContainer() {
   const handleComplete = async (task: Task): Promise<void> => {
     if (task.completed) {
       await uncompleteTask(task.id);
-      setTasks(prev => prev.map(t => (t.id === task.id ? { ...t, completed: false, completedAt: undefined } : t)));
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, completed: false, completedAt: undefined } : t))
+      );
 
       await cancelScheduledNotificationsForTaskId(task.id);
       await tryScheduleTaskNotification({ ...task, completed: false, completedAt: undefined } as Task, {
@@ -454,11 +759,18 @@ export default function HomeScreenContainer() {
     await completeTask(task.id);
     const completedAt = new Date().toISOString();
     const updated = { ...task, completed: true, completedAt };
-    setTasks(prev => prev.map(t => (t.id === task.id ? updated : t)));
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? updated : t)));
 
-    setUndoData({ action: 'complete', task });
+    setUndoData({ action: 'complete', task } as unknown as UndoData);
     setTimeout(() => {
-      setUndoData(curr => (curr?.action === 'complete' && curr.task.id === task.id ? null : curr));
+      setUndoData((curr) => {
+        const isSame = (curr as any)?.action === 'complete' && (curr as any)?.task?.id === task.id;
+        if (isSame) {
+          if (changeUndoRef.current?.oldTaskId === task.id) changeUndoRef.current = null;
+          return null;
+        }
+        return curr;
+      });
     }, 5000);
   };
 
@@ -469,27 +781,65 @@ export default function HomeScreenContainer() {
     await cancelScheduledNotificationsForTaskId(task.id);
 
     await deleteTask(task.id);
-    setTasks(prev => prev.filter(t => t.id !== task.id));
+    setTasks((prev) => prev.filter((t) => t.id !== task.id));
 
     if (wasImportant) {
-      const nextImp = importantOrder.filter(id => id !== task.id);
+      const nextImp = importantOrder.filter((id) => id !== task.id);
       await persistImportantOrder(nextImp);
     }
 
-    setUndoData({ action: 'delete', task, wasImportant, importantIndex });
+    setUndoData({ action: 'delete', task, wasImportant, importantIndex } as unknown as UndoData);
     setTimeout(() => {
-      setUndoData(curr => (curr?.action === 'delete' && curr.task.id === task.id ? null : curr));
+      setUndoData((curr) => {
+        const isSame = (curr as any)?.action === 'delete' && (curr as any)?.task?.id === task.id;
+        if (isSame) return null;
+        return curr;
+      });
     }, 5000);
   };
 
   const handleUndo = async (): Promise<void> => {
-    const data = undoData;
+    const data = undoData as any;
     if (!data) return;
 
+    // Special-case: undo for "Change time" (implemented via action='complete' UI)
+    if (data.action === 'complete' && changeUndoRef.current && data.task?.id === changeUndoRef.current.oldTaskId) {
+      const ctx = changeUndoRef.current;
+      changeUndoRef.current = null;
+
+      const current = tasksRef.current;
+      const nextTasks = current
+        .filter((t) => t.id !== ctx.newTaskId)
+        .map((t) => (t.id === ctx.oldTaskId ? { ...ctx.oldTaskSnapshot, completed: false, completedAt: undefined } : t));
+
+      setTasks(nextTasks);
+      await saveTasks(nextTasks);
+
+      if (ctx.oldWasImportant && ctx.oldImportantIndex !== null && ctx.oldImportantIndex >= 0) {
+        const currImp = importantOrderRef.current;
+        const nextImp = [...currImp];
+        const idx = nextImp.indexOf(ctx.newTaskId);
+        if (idx !== -1) nextImp[idx] = ctx.oldTaskId;
+        await persistImportantOrder(nextImp);
+      }
+
+      await cancelScheduledNotificationsForTaskId(ctx.newTaskId);
+      await cancelScheduledNotificationsForTaskId(ctx.oldTaskId);
+
+      const restoredOld = nextTasks.find((t) => t.id === ctx.oldTaskId);
+      if (restoredOld) {
+        await tryScheduleTaskNotification(restoredOld, { requestPermission: false });
+        router.replace({ pathname: '/', params: { highlightTaskId: restoredOld.id } });
+      }
+
+      setUndoData(null);
+      return;
+    }
+
     if (data.action === 'complete') {
-      const t = data.task;
+      const t = data.task as Task;
       await uncompleteTask(t.id);
-      setTasks(prev => prev.map(x => (x.id === t.id ? { ...x, completed: false, completedAt: undefined } : x)));
+      setTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, completed: false, completedAt: undefined } : x)));
 
       await cancelScheduledNotificationsForTaskId(t.id);
       await tryScheduleTaskNotification({ ...t, completed: false, completedAt: undefined } as Task, {
@@ -498,15 +848,15 @@ export default function HomeScreenContainer() {
     }
 
     if (data.action === 'delete') {
-      const t = data.task;
+      const t = data.task as Task;
       const restored: Task = { ...t, completed: false, completedAt: undefined };
-      const nextTasks = [...tasks, restored];
+      const nextTasks = [...tasksRef.current, restored];
       setTasks(nextTasks);
       await saveTasks(nextTasks);
 
       if (data.wasImportant) {
-        const idx = data.importantIndex ?? 0;
-        const nextImp = [...importantOrder];
+        const idx = (data.importantIndex ?? 0) as number;
+        const nextImp = [...importantOrderRef.current];
         const safeIdx = Math.max(0, Math.min(idx, nextImp.length));
         nextImp.splice(safeIdx, 0, t.id);
         await persistImportantOrder(nextImp);
@@ -546,17 +896,17 @@ export default function HomeScreenContainer() {
       titleError={titleError}
       whenError={whenError}
       showWhenField={showWhenField}
-      onTitleInputRef={r => {
+      onTitleInputRef={(r) => {
         titleInputRef.current = r;
       }}
-      onWhenInputRef={r => {
+      onWhenInputRef={(r) => {
         whenInputRef.current = r;
       }}
       onChangeTitleText={handleChangeTitleText}
       onChangeWhenText={handleChangeWhenText}
       onSubmitTitle={handleSubmitTitle}
       onAdd={handleAdd}
-      onScrollRef={r => {
+      onScrollRef={(r) => {
         scrollRef.current = r;
       }}
       onSectionLayout={handleSectionLayout}

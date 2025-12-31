@@ -13,19 +13,12 @@ import {
 } from '@/lib/storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Notifications from 'expo-notifications';
-import {
-  addDays,
-  endOfWeekSaturday,
-  isExpired,
-  isKeyInRange,
-  parseWhenInput,
-  pickStringParam,
-  startOfWeekSunday,
-  toDateKeyLocal,
-} from '@/lib/taskDateUtils';
+import { addDays, pickStringParam } from '@/lib/taskDateUtils';
 
-import HomeScreenView, { SectionKey, TaskRowData } from './HomeScreenView';
+import HomeScreenView, { SectionKey } from './HomeScreenView';
 import { UndoData } from './UndoToast';
+import { buildHomeSections, getRemindAtFromTask } from './homeSections';
+import { parseTaskWhenInput } from './taskWhenParser';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -45,48 +38,11 @@ const IMPORTANT_IDS_KEY = '@important_task_ids_v1';
 const SNOOZE_NOTIF_ID_MAP_KEY = '@task_snooze_notif_id_v1';
 const SKIP_TODAY_MAP_KEY = '@task_skip_today_v1';
 
-function getRemindAtFromTask(task: Task): Date | null {
-  try {
-    if (task.when === 'today') {
-      const d = new Date();
-      d.setSeconds(0, 0);
-      return d;
-    }
-
-    if (task.when === 'tomorrow') {
-      const d = addDays(new Date(), 1);
-      d.setSeconds(0, 0);
-      return d;
-    }
-
-    const parsed = new Date(task.when);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 function extractTaskIdFromNotification(req: Notifications.NotificationRequest): string | null {
   const data = (req?.content?.data ?? {}) as any;
   const id = data?.taskId;
   if (typeof id === 'string' && id.length > 0) return id;
   return null;
-}
-
-function toLocalDateKeyFromISO(iso: unknown): string | null {
-  if (typeof iso !== 'string' || iso.length === 0) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return toDateKeyLocal(d);
-}
-
-function toTimeMsFromISO(iso: unknown): number {
-  if (typeof iso !== 'string' || iso.length === 0) return 0;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return 0;
-  return d.getTime();
 }
 
 function parseHHmm(input: string): { h: number; m: number } | null {
@@ -255,7 +211,9 @@ export default function HomeScreenContainer() {
       }
 
       if (toCancel.length === 0) return;
-      await Promise.allSettled(toCancel.map((id) => Notifications.cancelScheduledNotificationAsync(id)));
+      await Promise.allSettled(
+        toCancel.map((id) => Notifications.cancelScheduledNotificationAsync(id))
+      );
     } catch {
       // ignore
     }
@@ -330,71 +288,19 @@ export default function HomeScreenContainer() {
     };
   }, []);
 
-  const todayKey = useMemo(() => toDateKeyLocal(now), [now]);
-  const tomorrowKey = useMemo(() => toDateKeyLocal(addDays(now, 1)), [now]);
+  const sections = useMemo(() => {
+    return buildHomeSections({ tasks, now });
+  }, [tasks, now]);
 
-  const weekStartKey = useMemo(() => toDateKeyLocal(startOfWeekSunday(now)), [now]);
-  const weekEndKey = useMemo(() => toDateKeyLocal(endOfWeekSaturday(now)), [now]);
+  const { todayKey, lateTasks, todayTasks, tomorrowTasks, thisWeekByDay, completedTodayTasks } = sections;
 
-  const normalized = useMemo(() => {
-    const result: TaskRowData[] = [];
-
-    tasks.forEach((t) => {
-      const remindAt = getRemindAtFromTask(t);
-      if (!remindAt) return;
-
-      const dateKey = toDateKeyLocal(remindAt);
-      result.push({ task: t, remindAt, dateKey });
-    });
-
-    return result;
-  }, [tasks]);
-
-  const visibleIncomplete = useMemo(() => {
-    return normalized.filter((x) => !x.task.completed && !isExpired(now, x.remindAt));
-  }, [normalized, now]);
-
-  const lateTasks = useMemo(() => {
-    return visibleIncomplete
-      .filter((x) => x.dateKey < todayKey)
-      .sort((a, b) => a.remindAt.getTime() - b.remindAt.getTime());
-  }, [visibleIncomplete, todayKey]);
-
-  const todayTasks = useMemo(() => {
-    return visibleIncomplete
-      .filter((x) => x.dateKey === todayKey)
-      .sort((a, b) => a.remindAt.getTime() - b.remindAt.getTime());
-  }, [visibleIncomplete, todayKey]);
-
-  const tomorrowTasks = useMemo(() => {
-    return visibleIncomplete
-      .filter((x) => x.dateKey === tomorrowKey)
-      .sort((a, b) => a.remindAt.getTime() - b.remindAt.getTime());
-  }, [visibleIncomplete, tomorrowKey]);
-
-  const thisWeekByDay = useMemo(() => {
-    const map: Record<string, TaskRowData[]> = {};
-    visibleIncomplete.forEach((x) => {
-      if (x.dateKey === todayKey || x.dateKey === tomorrowKey) return;
-      if (!isKeyInRange(x.dateKey, weekStartKey, weekEndKey)) return;
-      map[x.dateKey] = map[x.dateKey] ?? [];
-      map[x.dateKey].push(x);
-    });
-
-    Object.keys(map).forEach((k) => {
-      map[k].sort((a, b) => a.remindAt.getTime() - b.remindAt.getTime());
-    });
-
-    return map;
-  }, [visibleIncomplete, todayKey, tomorrowKey, weekStartKey, weekEndKey]);
-
-  const completedTodayTasks = useMemo(() => {
-    const today = todayKey;
-    return tasks
-      .filter((t) => t.completed && typeof t.completedAt === 'string')
-      .filter((t) => toLocalDateKeyFromISO(t.completedAt) === today)
-      .sort((a, b) => toTimeMsFromISO(b.completedAt) - toTimeMsFromISO(a.completedAt));
-  }, [tasks, todayKey]);
+  // eslint-disable-next-line no-console
+  console.log('[HomeSections]', {
+    todayKey,
+    lateCount: lateTasks.length,
+    todayCount: todayTasks.length,
+    tomorrowCount: tomorrowTasks.length,
+  });
 
   const importantTasks = useMemo(() => {
     const byId = new Map(tasks.map((t) => [t.id, t]));
@@ -487,9 +393,7 @@ export default function HomeScreenContainer() {
         const completedAt = new Date().toISOString();
         const oldUpdated: Task = { ...oldTask, completed: true, completedAt };
 
-        const nextTasks = currentTasks
-          .map((t) => (t.id === oldTask.id ? oldUpdated : t))
-          .concat(newTask);
+        const nextTasks = currentTasks.map((t) => (t.id === oldTask.id ? oldUpdated : t)).concat(newTask);
 
         // Important inheritance: replace old id with new id if needed
         const oldWasImportant = currentImportantOrder.includes(oldTask.id);
@@ -519,7 +423,8 @@ export default function HomeScreenContainer() {
         setUndoData({ action: 'complete', task: oldTask } as unknown as UndoData);
         setTimeout(() => {
           setUndoData((curr) => {
-            const isSame = (curr as any)?.action === 'complete' && (curr as any)?.task?.id === oldTask.id;
+            const isSame =
+              (curr as any)?.action === 'complete' && (curr as any)?.task?.id === oldTask.id;
             if (isSame) {
               changeUndoRef.current = null;
               return null;
@@ -696,20 +601,13 @@ export default function HomeScreenContainer() {
       return;
     }
 
-    const whenParsed = parseWhenInput(whenText);
+    const whenParsed = parseTaskWhenInput(whenText);
     if (!whenParsed.ok) {
       setWhenError(whenParsed.error);
       return;
     }
 
     const remindAt = whenParsed.remindAt;
-
-    const nowMinute = new Date();
-    nowMinute.setSeconds(0, 0);
-    if (remindAt.getTime() < nowMinute.getTime()) {
-      setWhenError('Time must be now or later');
-      return;
-    }
 
     const created: Task = {
       id: `${Date.now()}_${Math.floor(Math.random() * 10000)}`,
@@ -803,14 +701,22 @@ export default function HomeScreenContainer() {
     if (!data) return;
 
     // Special-case: undo for "Change time" (implemented via action='complete' UI)
-    if (data.action === 'complete' && changeUndoRef.current && data.task?.id === changeUndoRef.current.oldTaskId) {
+    if (
+      data.action === 'complete' &&
+      changeUndoRef.current &&
+      data.task?.id === changeUndoRef.current.oldTaskId
+    ) {
       const ctx = changeUndoRef.current;
       changeUndoRef.current = null;
 
       const current = tasksRef.current;
       const nextTasks = current
         .filter((t) => t.id !== ctx.newTaskId)
-        .map((t) => (t.id === ctx.oldTaskId ? { ...ctx.oldTaskSnapshot, completed: false, completedAt: undefined } : t));
+        .map((t) =>
+          t.id === ctx.oldTaskId
+            ? { ...ctx.oldTaskSnapshot, completed: false, completedAt: undefined }
+            : t
+        );
 
       setTasks(nextTasks);
       await saveTasks(nextTasks);

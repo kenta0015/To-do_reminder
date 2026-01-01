@@ -10,7 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Star } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Star } from 'lucide-react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
@@ -26,6 +26,8 @@ import ImportantHelpModal from './ImportantHelpModal';
 export type TaskRowData = { task: Task; remindAt: Date; dateKey: string };
 
 export type SectionKey = 'late' | 'today' | 'tomorrow' | 'week' | 'completed';
+
+type CollapsibleSectionKey = 'late' | 'today' | 'tomorrow' | 'week';
 
 type Props = {
   // Inputs
@@ -77,6 +79,10 @@ type Props = {
   onUndo: () => void | Promise<void>;
 
   navToastMessage: string | null;
+
+  // Collapsible sections (optional until wired from container)
+  collapsed?: Partial<Record<CollapsibleSectionKey, boolean>>;
+  onToggleSection?: (key: CollapsibleSectionKey) => void;
 };
 
 export default function HomeScreenView({
@@ -112,10 +118,56 @@ export default function HomeScreenView({
   undoData,
   onUndo,
   navToastMessage,
+  collapsed,
+  onToggleSection,
 }: Props) {
-  const renderSectionHeader = (label: string, faint?: boolean) => (
-    <Text style={faint ? styles.sectionTitleFaint : styles.sectionTitle}>{label}</Text>
-  );
+  const isCollapsed = (key: CollapsibleSectionKey): boolean => !!collapsed?.[key];
+
+  const getWeekCount = (): number => {
+    let total = 0;
+    for (const list of Object.values(thisWeekByDay)) total += list.length;
+    return total;
+  };
+
+  const renderCollapsibleHeader = (
+    key: CollapsibleSectionKey,
+    label: string,
+    count: number,
+    faint?: boolean
+  ) => {
+    const closed = isCollapsed(key);
+    const Icon = closed ? ChevronDown : ChevronUp;
+
+    return (
+      <TouchableOpacity
+        onPress={onToggleSection ? () => onToggleSection(key) : undefined}
+        disabled={!onToggleSection}
+        activeOpacity={0.85}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <Text style={faint ? styles.sectionTitleFaint : styles.sectionTitle}>{label}</Text>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text
+            style={[
+              styles.sectionTitleFaint,
+              {
+                marginRight: 8,
+                opacity: faint ? 0.8 : 0.7,
+              },
+            ]}
+          >
+            ({count})
+          </Text>
+          <Icon size={18} color={faint ? '#999' : '#666'} />
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   const renderEmpty = () => <Text style={styles.emptyText}>No tasks</Text>;
 
@@ -180,22 +232,24 @@ export default function HomeScreenView({
               onSectionLayout('late', e.nativeEvent.layout.y);
             }}
           >
-            {renderSectionHeader('Late')}
-            {lateTasks.length === 0
-              ? renderEmpty()
-              : lateTasks.map(x => (
-                  <TaskRow
-                    key={x.task.id}
-                    item={x}
-                    now={now}
-                    isImportant={importantSet.has(x.task.id)}
-                    isHighlighted={highlightTaskId === x.task.id}
-                    showLateMeta
-                    onToggleImportant={onToggleImportant}
-                    onComplete={onComplete}
-                    onDelete={onDelete}
-                  />
-                ))}
+            {renderCollapsibleHeader('late', 'Late', lateTasks.length)}
+            {isCollapsed('late') ? null : lateTasks.length === 0 ? (
+              renderEmpty()
+            ) : (
+              lateTasks.map(x => (
+                <TaskRow
+                  key={x.task.id}
+                  item={x}
+                  now={now}
+                  isImportant={importantSet.has(x.task.id)}
+                  isHighlighted={highlightTaskId === x.task.id}
+                  showLateMeta
+                  onToggleImportant={onToggleImportant}
+                  onComplete={onComplete}
+                  onDelete={onDelete}
+                />
+              ))
+            )}
           </View>
 
           <View
@@ -204,21 +258,23 @@ export default function HomeScreenView({
               onSectionLayout('today', e.nativeEvent.layout.y);
             }}
           >
-            {renderSectionHeader('Today')}
-            {todayTasks.length === 0
-              ? renderEmpty()
-              : todayTasks.map(x => (
-                  <TaskRow
-                    key={x.task.id}
-                    item={x}
-                    now={now}
-                    isImportant={importantSet.has(x.task.id)}
-                    isHighlighted={highlightTaskId === x.task.id}
-                    onToggleImportant={onToggleImportant}
-                    onComplete={onComplete}
-                    onDelete={onDelete}
-                  />
-                ))}
+            {renderCollapsibleHeader('today', 'Today', todayTasks.length)}
+            {isCollapsed('today') ? null : todayTasks.length === 0 ? (
+              renderEmpty()
+            ) : (
+              todayTasks.map(x => (
+                <TaskRow
+                  key={x.task.id}
+                  item={x}
+                  now={now}
+                  isImportant={importantSet.has(x.task.id)}
+                  isHighlighted={highlightTaskId === x.task.id}
+                  onToggleImportant={onToggleImportant}
+                  onComplete={onComplete}
+                  onDelete={onDelete}
+                />
+              ))
+            )}
           </View>
 
           <View
@@ -227,21 +283,23 @@ export default function HomeScreenView({
               onSectionLayout('tomorrow', e.nativeEvent.layout.y);
             }}
           >
-            {renderSectionHeader('Tomorrow', true)}
-            {tomorrowTasks.length === 0
-              ? renderEmpty()
-              : tomorrowTasks.map(x => (
-                  <TaskRow
-                    key={x.task.id}
-                    item={x}
-                    now={now}
-                    isImportant={importantSet.has(x.task.id)}
-                    isHighlighted={highlightTaskId === x.task.id}
-                    onToggleImportant={onToggleImportant}
-                    onComplete={onComplete}
-                    onDelete={onDelete}
-                  />
-                ))}
+            {renderCollapsibleHeader('tomorrow', 'Tomorrow', tomorrowTasks.length, true)}
+            {isCollapsed('tomorrow') ? null : tomorrowTasks.length === 0 ? (
+              renderEmpty()
+            ) : (
+              tomorrowTasks.map(x => (
+                <TaskRow
+                  key={x.task.id}
+                  item={x}
+                  now={now}
+                  isImportant={importantSet.has(x.task.id)}
+                  isHighlighted={highlightTaskId === x.task.id}
+                  onToggleImportant={onToggleImportant}
+                  onComplete={onComplete}
+                  onDelete={onDelete}
+                />
+              ))
+            )}
           </View>
 
           <View
@@ -250,33 +308,35 @@ export default function HomeScreenView({
               onSectionLayout('week', e.nativeEvent.layout.y);
             }}
           >
-            {renderSectionHeader('This Week', true)}
-            {Object.keys(thisWeekByDay).length === 0
-              ? renderEmpty()
-              : Object.keys(thisWeekByDay)
-                  .sort()
-                  .map(k => {
-                    const list = thisWeekByDay[k] ?? [];
-                    const d = new Date(`${k}T00:00:00`);
-                    const label = `${getDayNameShort(d)} ${k.slice(5).replace('-', '/')}`;
-                    return (
-                      <View key={k} style={styles.weekDayGroup}>
-                        <Text style={styles.weekDayHeader}>{label}</Text>
-                        {list.map(x => (
-                          <TaskRow
-                            key={x.task.id}
-                            item={x}
-                            now={now}
-                            isImportant={importantSet.has(x.task.id)}
-                            isHighlighted={highlightTaskId === x.task.id}
-                            onToggleImportant={onToggleImportant}
-                            onComplete={onComplete}
-                            onDelete={onDelete}
-                          />
-                        ))}
-                      </View>
-                    );
-                  })}
+            {renderCollapsibleHeader('week', 'This Week', getWeekCount(), true)}
+            {isCollapsed('week') ? null : Object.keys(thisWeekByDay).length === 0 ? (
+              renderEmpty()
+            ) : (
+              Object.keys(thisWeekByDay)
+                .sort()
+                .map(k => {
+                  const list = thisWeekByDay[k] ?? [];
+                  const d = new Date(`${k}T00:00:00`);
+                  const label = `${getDayNameShort(d)} ${k.slice(5).replace('-', '/')}`;
+                  return (
+                    <View key={k} style={styles.weekDayGroup}>
+                      <Text style={styles.weekDayHeader}>{label}</Text>
+                      {list.map(x => (
+                        <TaskRow
+                          key={x.task.id}
+                          item={x}
+                          now={now}
+                          isImportant={importantSet.has(x.task.id)}
+                          isHighlighted={highlightTaskId === x.task.id}
+                          onToggleImportant={onToggleImportant}
+                          onComplete={onComplete}
+                          onDelete={onDelete}
+                        />
+                      ))}
+                    </View>
+                  );
+                })
+            )}
           </View>
 
           <View

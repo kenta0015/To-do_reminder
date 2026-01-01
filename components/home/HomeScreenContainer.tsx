@@ -18,7 +18,8 @@ import { addDays, pickStringParam } from '@/lib/taskDateUtils';
 import HomeScreenView, { SectionKey } from './HomeScreenView';
 import { UndoData } from './UndoToast';
 import { buildHomeSections, getRemindAtFromTask } from './homeSections';
-import { parseTaskWhenInput } from './taskWhenParser';
+import { parseTaskWhenInputStrict } from './taskWhenParser';
+import { useCollapsedSections } from './useCollapsedSections';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -292,7 +293,8 @@ export default function HomeScreenContainer() {
     return buildHomeSections({ tasks, now });
   }, [tasks, now]);
 
-  const { todayKey, lateTasks, todayTasks, tomorrowTasks, thisWeekByDay, completedTodayTasks } = sections;
+  const { todayKey, lateTasks, todayTasks, tomorrowTasks, thisWeekByDay, completedTodayTasks } =
+    sections;
 
   // eslint-disable-next-line no-console
   console.log('[HomeSections]', {
@@ -393,7 +395,9 @@ export default function HomeScreenContainer() {
         const completedAt = new Date().toISOString();
         const oldUpdated: Task = { ...oldTask, completed: true, completedAt };
 
-        const nextTasks = currentTasks.map((t) => (t.id === oldTask.id ? oldUpdated : t)).concat(newTask);
+        const nextTasks = currentTasks
+          .map((t) => (t.id === oldTask.id ? oldUpdated : t))
+          .concat(newTask);
 
         // Important inheritance: replace old id with new id if needed
         const oldWasImportant = currentImportantOrder.includes(oldTask.id);
@@ -534,6 +538,39 @@ export default function HomeScreenContainer() {
     void applyNotificationActionIfAny(navTaskId);
   }, [applyNotificationActionIfAny, isReady, navTaskId]);
 
+  const { collapsed, toggle, expand } = useCollapsedSections();
+
+  const collapsedForView = useMemo(() => {
+    return {
+      late: collapsed.late,
+      today: collapsed.today,
+      tomorrow: collapsed.tomorrow,
+      week: collapsed.thisWeek,
+    };
+  }, [collapsed.late, collapsed.today, collapsed.tomorrow, collapsed.thisWeek]);
+
+  const handleToggleSection = useCallback(
+    (key: 'late' | 'today' | 'tomorrow' | 'week'): void => {
+      if (key === 'week') {
+        toggle('thisWeek');
+        return;
+      }
+      toggle(key);
+    },
+    [toggle]
+  );
+
+  const handleExpandSection = useCallback(
+    (key: 'late' | 'today' | 'tomorrow' | 'week'): void => {
+      if (key === 'week') {
+        expand('thisWeek');
+        return;
+      }
+      expand(key);
+    },
+    [expand]
+  );
+
   useEffect(() => {
     if (!isReady) return;
     const id = navTaskId;
@@ -564,6 +601,11 @@ export default function HomeScreenContainer() {
       return;
     }
 
+    if (isInLate) handleExpandSection('late');
+    else if (isInToday) handleExpandSection('today');
+    else if (isInTomorrow) handleExpandSection('tomorrow');
+    else if (isInWeek) handleExpandSection('week');
+
     Keyboard.dismiss();
     setHighlightTaskId(id);
 
@@ -585,7 +627,16 @@ export default function HomeScreenContainer() {
         scrollRef.current?.scrollTo({ y: Math.max(0, targetY - 10), animated: true });
       });
     }
-  }, [isReady, navTaskId, lateTasks, todayTasks, tomorrowTasks, thisWeekByDay, completedTodayTasks]);
+  }, [
+    isReady,
+    navTaskId,
+    lateTasks,
+    todayTasks,
+    tomorrowTasks,
+    thisWeekByDay,
+    completedTodayTasks,
+    handleExpandSection,
+  ]);
 
   const clearInputErrors = (): void => {
     setTitleError(null);
@@ -601,7 +652,7 @@ export default function HomeScreenContainer() {
       return;
     }
 
-    const whenParsed = parseTaskWhenInput(whenText);
+    const whenParsed = parseTaskWhenInputStrict(whenText);
     if (!whenParsed.ok) {
       setWhenError(whenParsed.error);
       return;
@@ -645,9 +696,12 @@ export default function HomeScreenContainer() {
       );
 
       await cancelScheduledNotificationsForTaskId(task.id);
-      await tryScheduleTaskNotification({ ...task, completed: false, completedAt: undefined } as Task, {
-        requestPermission: false,
-      });
+      await tryScheduleTaskNotification(
+        { ...task, completed: false, completedAt: undefined } as Task,
+        {
+          requestPermission: false,
+        }
+      );
 
       return;
     }
@@ -745,12 +799,17 @@ export default function HomeScreenContainer() {
     if (data.action === 'complete') {
       const t = data.task as Task;
       await uncompleteTask(t.id);
-      setTasks((prev) => prev.map((x) => (x.id === t.id ? { ...x, completed: false, completedAt: undefined } : x)));
+      setTasks((prev) =>
+        prev.map((x) => (x.id === t.id ? { ...x, completed: false, completedAt: undefined } : x))
+      );
 
       await cancelScheduledNotificationsForTaskId(t.id);
-      await tryScheduleTaskNotification({ ...t, completed: false, completedAt: undefined } as Task, {
-        requestPermission: false,
-      });
+      await tryScheduleTaskNotification(
+        { ...t, completed: false, completedAt: undefined } as Task,
+        {
+          requestPermission: false,
+        }
+      );
     }
 
     if (data.action === 'delete') {
@@ -835,6 +894,8 @@ export default function HomeScreenContainer() {
       undoData={undoData}
       onUndo={handleUndo}
       navToastMessage={navToast}
+      collapsed={collapsedForView}
+      onToggleSection={handleToggleSection}
     />
   );
 }

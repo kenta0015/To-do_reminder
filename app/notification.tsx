@@ -272,12 +272,11 @@ export default function NotificationScreen() {
     setChangeModalVisible(false);
     Keyboard.dismiss();
 
-    // The actual "new task + auto-done + undo" logic will be applied on Home screen next.
     goHomeHighlight({ actionKey: String(requestedAt) });
   }, [goHomeHighlight, taskId, timeInput]);
 
   const showNotNowSheet = useCallback(() => {
-    const options = ["10 min", "Change time", "Skip today", "Cancel"];
+    const options = ["10 min ⏰", "Change time 🕒", "Skip today ⏭️", "Cancel ✖️"];
     const cancelButtonIndex = 3;
 
     const onPick = async (idx: number) => {
@@ -308,7 +307,7 @@ export default function NotificationScreen() {
         {
           options,
           cancelButtonIndex,
-          title: "Not now",
+          title: "Not now 😴",
         },
         (buttonIndex) => {
           void onPick(buttonIndex);
@@ -317,7 +316,7 @@ export default function NotificationScreen() {
       return;
     }
 
-    Alert.alert("Not now", "Choose an option", [
+    Alert.alert("Not now 😴", "Choose an option", [
       { text: options[0], onPress: () => void onPick(0) },
       { text: options[1], onPress: () => void onPick(1) },
       { text: options[2], onPress: () => void onPick(2) },
@@ -350,18 +349,17 @@ export default function NotificationScreen() {
             <>
               <Text style={styles.label}>Task</Text>
               <Text style={styles.value}>{titleText}</Text>
-              <Text style={styles.smallNote}>Task ID: {taskId}</Text>
             </>
           )}
         </View>
 
         <View style={styles.buttonRow}>
           <TouchableOpacity style={[styles.button, styles.primary]} onPress={() => goHomeHighlight()}>
-            <Text style={[styles.buttonText, styles.primaryText]}>Got it</Text>
+            <Text style={[styles.buttonText, styles.primaryText]}>Got it 👍</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={[styles.button, styles.secondary]} onPress={showNotNowSheet}>
-            <Text style={[styles.buttonText, styles.secondaryText]}>Not now</Text>
+            <Text style={[styles.buttonText, styles.secondaryText]}>Not now 😴</Text>
           </TouchableOpacity>
         </View>
 
@@ -383,7 +381,7 @@ export default function NotificationScreen() {
                   setTimeError(null);
                 }}
                 placeholder="18:40"
-                placeholderTextColor="#7C7F8F"
+                placeholderTextColor="#6B7280"
                 keyboardType="numbers-and-punctuation"
                 autoCorrect={false}
                 autoCapitalize="none"
@@ -425,7 +423,7 @@ export default function NotificationScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#0B0B0E",
+    backgroundColor: "#F6F7FB",
   },
   container: {
     flex: 1,
@@ -435,30 +433,32 @@ const styles = StyleSheet.create({
   },
   header: {
     fontSize: 22,
-    fontWeight: "700",
-    color: "#FFFFFF",
+    fontWeight: "800",
+    color: "#111827",
   },
   card: {
-    borderRadius: 14,
-    backgroundColor: "#16161C",
-    padding: 14,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    padding: 16,
     gap: 8,
+    borderWidth: 1,
+    borderColor: "#E6E8F0",
   },
   label: {
     fontSize: 12,
-    color: "#A9ABB7",
-    fontWeight: "600",
+    color: "#6B7280",
+    fontWeight: "700",
   },
   value: {
     fontSize: 18,
-    color: "#FFFFFF",
-    fontWeight: "700",
+    color: "#111827",
+    fontWeight: "800",
     lineHeight: 24,
   },
   smallNote: {
     marginTop: 6,
     fontSize: 12,
-    color: "#A9ABB7",
+    color: "#6B7280",
     lineHeight: 16,
   },
   buttonRow: {
@@ -473,26 +473,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   primary: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#111827",
   },
   secondary: {
-    backgroundColor: "#16161C",
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "#2A2B36",
+    borderColor: "#D1D5DB",
   },
   buttonText: {
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   primaryText: {
-    color: "#0B0B0E",
+    color: "#FFFFFF",
   },
   secondaryText: {
-    color: "#FFFFFF",
+    color: "#111827",
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.25)",
     alignItems: "center",
     justifyContent: "center",
     padding: 18,
@@ -500,35 +500,37 @@ const styles = StyleSheet.create({
   modalCard: {
     width: "100%",
     borderRadius: 16,
-    backgroundColor: "#16161C",
+    backgroundColor: "#FFFFFF",
     padding: 16,
     gap: 10,
+    borderWidth: 1,
+    borderColor: "#E6E8F0",
   },
   modalTitle: {
     fontSize: 16,
-    fontWeight: "800",
-    color: "#FFFFFF",
+    fontWeight: "900",
+    color: "#111827",
   },
   modalLabel: {
     fontSize: 12,
-    color: "#A9ABB7",
-    fontWeight: "700",
+    color: "#6B7280",
+    fontWeight: "800",
   },
   input: {
     height: 46,
     borderRadius: 12,
-    backgroundColor: "#0B0B0E",
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "#2A2B36",
+    borderColor: "#D1D5DB",
     paddingHorizontal: 12,
-    color: "#FFFFFF",
+    color: "#111827",
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   errorText: {
     fontSize: 12,
-    color: "#FF6B6B",
-    fontWeight: "700",
+    color: "#DC2626",
+    fontWeight: "800",
   },
   modalButtons: {
     flexDirection: "row",
@@ -543,27 +545,27 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   modalPrimary: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#111827",
   },
   modalSecondary: {
-    backgroundColor: "#0B0B0E",
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: "#2A2B36",
+    borderColor: "#D1D5DB",
   },
   modalPrimaryText: {
-    color: "#0B0B0E",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-  modalSecondaryText: {
     color: "#FFFFFF",
     fontSize: 16,
-    fontWeight: "800",
+    fontWeight: "900",
+  },
+  modalSecondaryText: {
+    color: "#111827",
+    fontSize: 16,
+    fontWeight: "900",
   },
   modalHint: {
     marginTop: 2,
     fontSize: 12,
-    color: "#A9ABB7",
+    color: "#6B7280",
     lineHeight: 16,
   },
 });

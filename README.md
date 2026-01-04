@@ -1,128 +1,133 @@
-# No More Procrastination Reminders
+# No More Procrastination Reminders (iOS)
 
-A tiny, low-friction **iOS-only** todo + reminder app designed for people who _don’t want to manage tasks_—just capture them fast, get reminded, and check them off.
-
----
-
-## What this app is
-
-- **Two-step capture:** write the task → set _when_ you want to be reminded
-- **Local reminders:** schedules **local notifications** on your device
-- **Inbox-first Home:** shows what matters _now_ (plus overdue items) without turning into a “task management project”
-- **Gentle cleanup:** unfinished tasks eventually disappear from Home after a grace window
+**iOS-first, offline todo + reminders** built for people who don’t want “task management” — they want **fast capture, reliable reminders, and zero maintenance**.  
+Designed around **strict time input**, **local notification scheduling**, and an **Inbox-first Home** that prioritizes what’s actionable now.  
+No accounts, no backend, no sync — **on-device persistence + timezone-aware behavior** with graceful degradation when permissions aren’t granted.
 
 ---
 
-## Platform / storage
+## Outcomes & value (what this delivers)
 
-- **Platform:** iOS (iPhone) only
-- **Storage:** on-device (AsyncStorage)
-- **Notifications:** local notifications (expo-notifications)
-- **Timezone:** uses your device’s local timezone
-
-No accounts. No sync. No server.
+- **Low-friction capture:** a **2-step flow** (task → when) optimized for speed and minimal cognitive load
+- **Reliable reminders:** schedules **local notifications** (no network dependency)
+- **Inbox-first prioritization:** auto-groups unfinished tasks into **5 actionable sections** (Late / Today / Tomorrow / This Week / Completed Today)
+- **Automatic cleanup:** reduces backlog creep with a **7-day overdue expiry window** (tasks disappear from Home after prolonged inactivity; data remains stored)
 
 ---
 
-## Quick start (user flow)
+## Core product behavior
 
-1. On **Home**, type what you need to do.
-2. Enter **when** you want to be reminded.
-3. The task is saved and (if permission is granted) a local notification is scheduled.
+### 1) Fast capture + strict validation
 
-If notification permission is **not granted**, the task is still saved, but no reminder will fire.
+- Create a task in **two steps**: enter the task, then enter **when** to be reminded.
+- Uses a **strict date/time parser** to prevent accidental scheduling from ambiguous input.
+- Invalid input is **blocked at the source**: inline validation prevents creating a task until the time is valid.
 
----
-
-## Entering “when” (time input)
-
-The app uses a **strict** date/time parser. It accepts common formats and rejects ambiguous ones.
-
-Examples of inputs that commonly work:
+**Common accepted formats**
 
 - `2026/06/23 10:00`
 - `today 21:00`
 - `tomorrow 9am`
 
-If the input is invalid, you’ll see an inline error and the task won’t be created until it’s fixed.
+If the input is invalid, the app shows an inline error and the task is not created until fixed.
 
 ---
 
-## Home screen behavior
+### 2) Home screen that surfaces “what matters now”
 
-Home is built around **unfinished tasks**, grouped into sections:
+Home is built around **unfinished tasks** and presents them in clear, time-based sections:
 
 - **Late** (overdue)
 - **Today**
 - **Tomorrow**
 - **This Week** (Sun–Sat)
-- **Completed Today** (shown at the bottom for a bit of “done” satisfaction)
+- **Completed Today** (shown temporarily for visible progress)
 
-### Carryover (overdue tasks)
+**Carryover behavior (Late)**  
+Overdue tasks automatically roll into **Late** if you didn’t complete them.
 
-If a task’s reminder time has passed and you didn’t complete it, it shows under **Late**.
+**Quiet disappearance (anti-backlog)**  
+To prevent “infinite overdue lists”:
 
-### “Quiet disappearance” window
-
-Unfinished tasks are not shown forever:
-
-- A task remains visible on Home (including Late) until it becomes **expired**
-- A task is considered expired when it has been overdue for **more than 7 days**
-- Expired tasks **disappear from Home** (data stays on-device)
+- Tasks remain visible on Home (including Late) until they become **expired**
+- A task is **expired after >7 days overdue**
+- Expired tasks **disappear from Home** (data remains on-device)
 
 ---
 
-## Notifications
+## Notifications (event-driven UX)
 
-When a reminder fires, the notification opens a screen with two main actions:
+When a reminder fires, the notification opens a dedicated screen with two primary actions:
 
 ### ✅ Got it
 
-- Returns you to Home
-- Highlights the related task briefly
-- Does **not** auto-complete the task (completion happens from Home)
+- Returns to Home
+- Briefly highlights the related task for quick context
+- Does **not** auto-complete (completion stays explicit on Home)
 
 ### 😴 Not now
 
-Opens actions:
+Provides controlled deferral actions:
 
 - **Snooze 10 min**  
-  Updates the task’s reminder time to **now + 10 minutes**, then reschedules the notification.
+  Updates the task’s reminder time to **now + 10 minutes**, then reschedules.
 
 - **Change time**  
-  Lets you enter a new **time (HH:mm) for today**.  
-  The app **creates a new task** for the updated time and **automatically marks the original task as completed** (with Undo support).
+  Enter a new **time (HH:mm) for today**.  
+  The app **creates a new task** for the updated time and **automatically marks the original as completed** (with Undo support).
 
 - **Skip**  
   Updates the task’s reminder time to **+1 day**, then reschedules.
 
-After these actions, the app returns you to Home and highlights the affected task.
+After any action, the app returns to Home and highlights the affected task.
 
 ---
 
-## ⭐ Important (starred) tasks
+## ⭐ Important tasks (prioritized workflow)
 
-You can mark tasks as **Important (⭐)**.
-
-- Important tasks are accessible via a **modal list**
-- You can **reorder** important tasks inside that modal
-- You can **complete** tasks from the Important list
+- Mark tasks as **Important (⭐)**
+- View Important tasks in a **modal list**
+- **Reorder** Important tasks
+- **Complete** tasks directly from the Important list
 
 ---
 
-## What this app does NOT do (current state)
+## Technical stack (developer-facing)
+
+- **Platform:** iOS (iPhone) only
+- **Architecture:** offline-first, on-device persistence
+- **Storage:** AsyncStorage (local)
+- **Notifications:** expo-notifications (local scheduling)
+- **Routing / UI:** Expo Router
+- **Language:** TypeScript
+- **Timezone:** device local timezone
+
+**No accounts. No sync. No server.**  
+This intentionally removes backend complexity and focuses on **deterministic local state + reliable notification scheduling**.
+
+---
+
+## Engineering highlights (transferable skills)
+
+- **Strict input parsing + validation gates** to prevent bad state entering the system
+- **State transitions** that support deferrals (Snooze/Skip/Change-time) and post-action highlighting
+- **Offline-first UX** with graceful degradation (tasks still persist when notification permission is denied)
+- **Time-bucketed prioritization** (Late/Today/Tomorrow/Week) designed for clarity and actionability
+- **Backlog control policy** via a defined expiry window (7-day overdue threshold)
+
+---
+
+## Current non-goals (intentional scope)
 
 - No search
-- No categories/tags
-- No recurring reminders (other than Snooze)
+- No tags/categories
+- No recurring reminders (beyond Snooze)
 - No daily re-notify loop for Late tasks
 - No cloud sync / multi-device support
 
 ---
 
-## Development
-
-This is an Expo Router + TypeScript project.
+## Quick start (dev)
 
 ### Install
 
@@ -130,10 +135,12 @@ This is an Expo Router + TypeScript project.
 npm install
 ```
 
-### Run (iOS)
+Run (iOS)
 
-```bash
+```
 npx expo start
+
 ```
 
-Notifications may behave differently depending on how you run the app (simulator vs device). Always test reminder behavior on a real iPhone if notifications matter for your workflow.
+Note: Notification behavior varies by environment (simulator vs real device).
+If reminders matter for your evaluation, test on a real iPhone to validate scheduling and delivery.

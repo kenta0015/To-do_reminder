@@ -1,284 +1,139 @@
-# 忘れないより、溜めない。先延ばしを止める Todo リスト or reminder。
+# No More Procrastination Reminders
 
-## 1) アプリの目的・コンセプト
+A tiny, low-friction **iOS-only** todo + reminder app designed for people who _don’t want to manage tasks_—just capture them fast, get reminded, and check them off.
 
-### 目的 No more procrastination（先延ばし防止）
+---
 
-「やらないといけないことをメモすること自体が面倒で先送りになる」問題を解決する
+## What this app is
 
-#### 立ち位置（競合との差）
+- **Two-step capture:** write the task → set _when_ you want to be reminded
+- **Local reminders:** schedules **local notifications** on your device
+- **Inbox-first Home:** shows what matters _now_ (plus overdue items) without turning into a “task management project”
+- **Gentle cleanup:** unfinished tasks eventually disappear from Home after a grace window
 
-多機能 ToDo のように「整理・管理が得意な人向け」ではなく、
+---
 
-管理が苦手でも回ることを狙う
-→ ユーザーに分類・整理・計画をさせず、最小入力と自動挙動で回る
+## Platform / storage
 
-### キーコンセプト
+- **Platform:** iOS (iPhone) only
+- **Storage:** on-device (AsyncStorage)
+- **Notifications:** local notifications (expo-notifications)
+- **Timezone:** uses your device’s local timezone
 
-7 日以内に片付けるための“瞬間メモ”
+No accounts. No sync. No server.
 
-未来のタスクも入れられるが、普段は見せすぎない（プレッシャーを避ける）
+---
 
-## 2) 基本の登録体験（最初の MVP）
+## Quick start (user flow)
 
-登録フローは固定でシンプル（2 ステップ）
+1. On **Home**, type what you need to do.
+2. Enter **when** you want to be reminded.
+3. The task is saved and (if permission is granted) a local notification is scheduled.
 
-1 行メモを入力（やることを書く）
+If notification permission is **not granted**, the task is still saved, but no reminder will fire.
 
-直後に 「いつ知らせてほしい？」 と聞く
-→ ユーザーが 日時/時刻を文字で入力して確定
+---
 
-ここでは「候補提案」はしない（余計な UI 操作を増やさない）
+## Entering “when” (time input)
 
-将来的には「1 行に日時も一緒に書ける」パワーアップが可能だが、現時点の決定は 2 ステップ
+The app uses a **strict** date/time parser. It accepts common formats and rejects ambiguous ones.
 
-## 3) Home（タスク一覧）の考え方
+Examples of inputs that commonly work:
 
-Home は “未完了（Inbox）” が中心
+- `2026/06/23 10:00`
+- `today 21:00`
+- `tomorrow 9am`
 
-リマインくんのように「登録はできるが、後でまとめて見づらい／別アプリへ転記する」問題をなくすため、
+If the input is invalid, you’ll see an inline error and the task won’t be created until it’s fixed.
 
-登録したタスクはこのアプリ内で一覧できる（散らばらない）
+---
 
-表示は“日ごとに区切る”形式
+## Home screen behavior
 
-Today / Tomorrow / This Week のように、日付のまとまりで見せる
+Home is built around **unfinished tasks**, grouped into sections:
 
-カレンダー形式ではなく、リスト形式でずらっと並べる方針
+- **Late** (overdue)
+- **Today**
+- **Tomorrow**
+- **This Week** (Sun–Sat)
+- **Completed Today** (shown at the bottom for a bit of “done” satisfaction)
 
-リマインくんの不便を解消する要件
+### Carryover (overdue tasks)
 
-同じ時間に複数のタスクがある場合、順番を入れ替えできる
+If a task’s reminder time has passed and you didn’t complete it, it shows under **Late**.
 
-「同じ時間の中の優先順位」をユーザーが決められる
+### “Quiet disappearance” window
 
-これが “タスクをまとめて見れる” の価値を上げる
+Unfinished tasks are not shown forever:
 
-## 4) 未来タスクが溜まってプレッシャーになる問題への対策（表示設計）
+- A task remains visible on Home (including Late) until it becomes **expired**
+- A task is considered expired when it has been overdue for **more than 7 days**
+- Expired tasks **disappear from Home** (data stays on-device)
 
-### 重要な方針
+---
 
-タスクはアプリが記憶して保持するが、
+## Notifications
 
-ユーザーに常に全部を見せない
-→ “見せすぎない”ことでプレッシャーを減らす
+When a reminder fires, the notification opens a screen with two main actions:
 
-Home に表示される期間（7 日ウィンドウ）
+### ✅ Got it
 
-タスクにはユーザーが入力した リマインド日時がある。
+- Returns you to Home
+- Highlights the related task briefly
+- Does **not** auto-complete the task (completion happens from Home)
 
-そのタスクは Home 上で、
+### 😴 Not now
 
-リマインド日の 7 日前から表示される
+Opens actions:
 
-リマインド日当日も表示される
+- **Snooze 10 min**  
+  Updates the task’s reminder time to **now + 10 minutes**, then reschedules the notification.
 
-リマインド日から 7 日後まで表示される
+- **Change time**  
+  Lets you enter a new **time (HH:mm) for today**.  
+  The app **creates a new task** for the updated time and **automatically marks the original task as completed** (with Undo support).
 
-リマインド日＋ 7 日を過ぎたら未完了でも静かに消える（Home から消える）
+- **Skip**  
+  Updates the task’s reminder time to **+1 day**, then reschedules.
 
-例：
-「半年後 英会話解約を検討」を半年後の日付で登録したら、
+After these actions, the app returns you to Home and highlights the affected task.
 
-Home に出てくるのは 半年後の 7 日前から
+---
 
-未完了なら 半年後＋ 7 日後に Home から消える
+## ⭐ Important (starred) tasks
 
-→ 未来のタスクが大量にあっても、普段は Home に出ないので圧になりにくい
+You can mark tasks as **Important (⭐)**.
 
-## 5) タスクが終わらなかった場合（持ち越しの方針）
+- Important tasks are accessible via a **modal list**
+- You can **reorder** important tasks inside that modal
+- You can **complete** tasks from the Important list
 
-例：Today 10:00「銀行に電話」をやらなかった
+---
 
-### 方針
+## What this app does NOT do (current state)
 
-翌日に自動で持ち越して表示してよい
+- No search
+- No categories/tags
+- No recurring reminders (other than Snooze)
+- No daily re-notify loop for Late tasks
+- No cloud sync / multi-device support
 
-つまり「今日できなかったもの」は、次の日にも一覧に残っていて OK
+---
 
-ただし無限に残るわけではなく、リマインド日＋ 7 日で自動的に Home から消える
+## Development
 
-この結果：
+This is an Expo Router + TypeScript project.
 
-管理が苦手でも、勝手に次の日に残ってくれる（=回る）
+### Install
 
-でも永遠に溜まるわけではなく、7 日で自然に整理される（=圧はあるが破綻しない）
+```bash
+npm install
+```
 
-「それぐらいのプレッシャーはあってもいい」という方針に一致
+### Run (iOS)
 
-## 6) タスクを「完了」にする方法（消していく体験）
+```bash
+npx expo start
+```
 
-完了操作
-
-1 タップ（チェック）で完了させるのが最も手軽、という方向
-
-達成感の設計（ハイブリッド感）
-
-完了したタスクは Home の未完了一覧から消える
-
-ただしその日の達成感を得るために、
-
-Home の下部に “Completed Today（今日完了したもの）”を薄く表示する
-
-これにより「リマインダー＋ ToDo」のハイブリッドとして気持ちよさが出る
-
-## 8) カテゴリ・重要度の扱い（現時点の方針）
-
-手動でカテゴリをいちいち付けさせるのは面倒なので、基本はやらない
-
-重要度（強/弱）のような運用も、過去の経験から価値が薄い
-
-代わりに、**入力不要で自動分類（ルールベース）**は良い方向性
-
-将来的に AI 導入で精度を上げる余地はあるが、今は「軽く・重くしない」前提
-
-## 9) 現時点でこのアプリが目指すユーザー体験（まとめ）
-
-思いついた瞬間に 1 行メモできる
-
-日時入力も文字で済むので、カレンダー操作より軽い
-
-タスクはアプリ内にまとまり、別メモアプリへ移さなくていい
-
-Home は直近だけが見え、未来タスクが圧にならない
-
-終わらなかったら次の日に残るが、7 日で自然に消えるので溜まり続けない
-
-今日やった分は “Completed Today” で達成感が得られる
-
-「管理が得意じゃなくても回る」設計になっている
-
-# No More Procrastination Reminders（MVP 仕様まとめ）
-
-## プラットフォーム / 保存
-
-iOS（iPhone）のみ
-
-ローカル保存（端末内）
-
-ローカル通知
-
-タイムゾーンは 端末ローカル時刻
-
-## コアコンセプト
-
-“管理させない”。瞬間メモ → 思い出す → 完了を最短化
-
-未来タスクを普段見せない（プレッシャーを減らす）
-
-未完了は 7 日で静かに消える（ただしデータは端末内に保持）
-
-しつこい再通知はしない（スヌーズ除く）
-
-## Home（一覧）
-
-### セクション
-
-Today / Tomorrow / This Week（Sun–Sat）
-
-Completed Today（下部に薄く表示）
-
-⭐ Important（入口は Home 下部、Completed Today 付近） → モーダル
-
-### 表示開始・終了
-
-タスクは リマインド当日から Home に出る
-（今週範囲に入るなら This Week に出る）
-
-期限（リマインド日時）を過ぎたら Late 表示で翌日に持ち越し
-
-リマインド日 + 7 日で未完了でも 静かに消える（表示から）
-
-### 並び順
-
-初期：時刻順
-
-ユーザー並び替え：その日だけ保持
-
-日付が変わったらリセットして時刻順へ
-
-Late は 常に上
-
-作成日表示
-
-「あと ◯ 日で消える」表示
-
-### 行の見え方
-
-タスク本文：最大 2 行表示
-
-重要：⭐ トグル（1 タップ）
-
-完了：✅ チェック 1 タップ + 右スワイプで完了
-
-Undo：完了/変更の自動 Done に対して 画面下トーストで数秒 Undo
-
-### 削除（MVP であり）
-
-見た目を増やさない操作で削除できる（例：長押し or 左スワイプ等）
-
-削除にも Undo を適用するのが自然（同じトースト）
-
-### 追加（入力）
-
-Home 上部に入力バー常設
-
-プレースホルダー：「やること」
-
-1 文字入力で即「いつ？」欄が出る
-
-プレースホルダー：「いつ？」
-
-1 画面で連続入力
-
-日時形式（MVP）：YYYY/MM/DD HH:mm（分単位）
-
-入力ミスは その場で赤字エラー + 例「形式は 2026/06/23 10:00」
-
-追加確定：キーボード Done/Enter
-
-追加直後：そのタスクを 数秒ハイライト
-
-### 通知
-
-通知画面（2 ボタン）
-
-Got it
-
-Not now
-
-の２ボタン
-
-Got it の場合
-
-Today 一覧へ移動
-
-該当タスクを数秒ハイライト
-
-タスクは完了にしない（完了は Home のチェック）
-
-Not now（アクションシート）の場合
-
-🔁 10 分後：同じタスクのまま再通知
-
-🗓 変更：時間だけ再入力 → 新タスク作成 + 元タスク自動 Done（Undo あり）
-
-⏭ Skip（今日はスキップ）：今日の通知だけ止める（タスクは残る／Late でも再通知しない）
-
-Cancel
-
-### 重要枠（モーダル）
-
-⭐ 重要タスクのみ表示
-
-並び替え可能
-
-チェックで完了可能
-
-### MVP でやらない
-
-検索：なし
-
-カテゴリ入力：なし（将来の自動提案/AI は後回し）
-
-Late の毎日再通知：なし
+Notifications may behave differently depending on how you run the app (simulator vs device). Always test reminder behavior on a real iPhone if notifications matter for your workflow.

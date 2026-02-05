@@ -67,8 +67,38 @@ When we do, we will update the "Last updated" date at the top of this page. For 
 
 ---
 
-## 7. Contact
+## 7. Support
 
-If you have any questions about this Privacy Policy or the App, please contact:
+### How to use the App
 
-- Email: **youremail@example.com**
+**Quick Todo Reminder** is a simple, offline-first task reminder app for iPhone.
+
+**Creating a task:**
+1. Enter what you need to do in the task field
+2. Enter when you want to be reminded (e.g., "today 21:00", "tomorrow 9am", "2026/06/23 10:00")
+3. Tap "Add"
+
+**Viewing tasks:**
+- Tasks are automatically organized into sections: **Late**, **Today**, **Tomorrow**, **This Week**
+- Tap the ⭐ icon to mark tasks as Important
+- Swipe to complete or delete tasks
+
+**Notifications:**
+- The App uses local notifications to remind you at the times you set
+- If you deny notification permission, you can still create and store tasks, but you won't receive reminder alerts
+
+**Common questions:**
+- **Q: Can I sync tasks across devices?**  
+  A: No, the App stores all data on your device only. There is no cloud sync in the current version.
+- **Q: What happens if I don't complete a task?**  
+  A: Overdue tasks move to the "Late" section. Tasks that are overdue for more than 7 days will disappear from the Home screen (but data remains stored on your device).
+- **Q: Can I change a reminder time?**  
+  A: Yes, when a notification appears, you can tap "Not now" and choose to change the time, snooze, or skip to tomorrow.
+
+---
+
+## 8. Contact
+
+If you have any questions about this Privacy Policy, the App, or need support, please contact:
+
+- Email: **kenkenken10160015@gmail.com**

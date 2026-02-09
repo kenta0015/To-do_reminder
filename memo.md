@@ -31,3 +31,11 @@ app/\_layout.tsx が「通知まわりのエントリーポイント」と思っ
 もしくは notificationsConfig.ts みたいなファイルを作って、\_layout.tsx から一度だけ import して呼び出す、という形にするのが自然です。
 
 今の段階の問い（「初期化ファイルはどこ？」）だけで言えば、
+
+---
+
+## 実機で Expo 開発サーバーに接続する（Expo Go）
+
+1. トンネルで起動: `npx expo start --tunnel`
+2. ターミナルに表示されている URL（例: `exp://k6slvje-kenta0015-8081.exp.direct`）をコピーする
+3. iPhone のアドレスバー（Safari など）にその URL を貼り付けてアクセスする → Expo Go で開く

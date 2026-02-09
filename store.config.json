@@ -1,0 +1,6 @@
+{
+  "configVersion": 0,
+  "apple": {
+    "appIcon": "./assets/images/icon.png"
+  }
+}

@@ -1,16 +1,17 @@
 {
   "expo": {
-    "name": "bolt-expo-nativewind",
-    "slug": "bolt-expo-nativewind",
+    "name": "Todo Reminder",
+    "slug": "todo-reminder",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "todo-reminder-ken",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.kenta0015.bolt-expo-nativewind"
+      "supportsTablet": false,
+      "bundleIdentifier": "com.kenta0015.bolt-expo-nativewind",
+      "buildNumber": "1"
     },
     "web": {
       "bundler": "metro",
@@ -31,6 +32,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "710f0c61-fcab-45a7-842c-46b9290b93e4"
+      }
     }
   }
 }

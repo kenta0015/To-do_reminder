@@ -148,6 +148,16 @@ export default function HomeScreenContainer() {
     return a ?? b ?? c;
   }, [params]);
 
+  const quickActionParams = useMemo(() => {
+    const focusAdd = pickStringParam((params as any)?.focusAdd);
+    const quickAdd = pickStringParam((params as any)?.quickAdd);
+    const quickAddTitle = pickStringParam((params as any)?.quickAddTitle);
+    const openImportant = pickStringParam((params as any)?.openImportant);
+    return { focusAdd, quickAdd, quickAddTitle, openImportant };
+  }, [params]);
+
+  const quickActionHandledRef = useRef(false);
+
   const cancelScheduledNotificationsForTaskId = async (taskId: string): Promise<void> => {
     try {
       const scheduled = await Notifications.getAllScheduledNotificationsAsync();
@@ -636,6 +646,62 @@ export default function HomeScreenContainer() {
     thisWeekByDay,
     completedTodayTasks,
     handleExpandSection,
+  ]);
+
+  // Quick Action: focusAdd → focus title input
+  useEffect(() => {
+    if (!isReady || !quickActionParams.focusAdd) return;
+    router.replace('/(tabs)');
+    requestAnimationFrame(() => {
+      titleInputRef.current?.focus();
+    });
+  }, [isReady, quickActionParams.focusAdd, router]);
+
+  // Quick Action: openImportant → open Important modal
+  useEffect(() => {
+    if (!isReady || !quickActionParams.openImportant) return;
+    setShowImportantModal(true);
+    router.replace('/(tabs)');
+  }, [isReady, quickActionParams.openImportant, router]);
+
+  // Quick Action: quickAdd → create task with title + when and schedule notification
+  useEffect(() => {
+    if (!isReady || !quickActionParams.quickAdd) return;
+    if (quickActionHandledRef.current) return;
+    quickActionHandledRef.current = true;
+
+    const whenStr = quickActionParams.quickAdd;
+    const titleStr = quickActionParams.quickAddTitle?.trim() || 'Quick reminder';
+
+    const parsed = parseTaskWhenInputStrict(whenStr);
+    if (!parsed.ok) {
+      quickActionHandledRef.current = false;
+      router.replace('/(tabs)');
+      return;
+    }
+
+    const created: Task = {
+      id: `${Date.now()}_${Math.floor(Math.random() * 10000)}`,
+      title: titleStr,
+      when: parsed.remindAt.toISOString(),
+      completed: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    (async () => {
+      const next = [...tasksRef.current, created];
+      setTasks(next);
+      await saveTasks(next);
+      await tryScheduleTaskNotification(created, { requestPermission: true });
+      setHighlightTaskId(created.id);
+      setTimeout(() => setHighlightTaskId((prev) => (prev === created.id ? null : prev)), 1600);
+      router.replace('/(tabs)');
+    })();
+  }, [
+    isReady,
+    quickActionParams.quickAdd,
+    quickActionParams.quickAddTitle,
+    router,
   ]);
 
   const clearInputErrors = (): void => {

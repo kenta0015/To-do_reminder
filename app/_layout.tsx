@@ -4,6 +4,8 @@ import { useEffect, useRef, useCallback } from "react";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Notifications from "expo-notifications";
+import * as QuickActions from "expo-quick-actions";
+import { useQuickActionCallback } from "expo-quick-actions/hooks";
 import { useFrameworkReady } from "@/hooks/useFrameworkReady";
 
 declare global {
@@ -75,6 +77,68 @@ export default function RootLayout() {
       sub.remove();
     };
   }, [handleNotificationTap]);
+
+  // Quick Actions (app icon long-press): register 4 items
+  useEffect(() => {
+    void QuickActions.setItems([
+      {
+        id: "add",
+        title: "Add reminder",
+        icon: "add",
+        params: { type: "focusAdd" },
+      },
+      {
+        id: "add2m",
+        title: "Add in 2 minutes",
+        subtitle: "Quick demo reminder",
+        icon: "alarm",
+        params: { type: "quickAdd", when: "in 2 minutes", title: "Quick reminder" },
+      },
+      {
+        id: "important",
+        title: "Open Important",
+        icon: "task",
+        params: { type: "openImportant" },
+      },
+      {
+        id: "stats",
+        title: "Open Statistics",
+        icon: "taskCompleted",
+        params: { type: "openStats" },
+      },
+    ]);
+  }, []);
+
+  useQuickActionCallback(
+    useCallback(
+      (action: { params?: Record<string, string | number | boolean | null | undefined> | null }) => {
+        const type = action.params?.type as string | undefined;
+        if (!type) return;
+
+        if (type === "openStats") {
+          router.replace("/(tabs)/stats");
+          return;
+        }
+
+        if (type === "focusAdd") {
+          router.replace({ pathname: "/(tabs)", params: { focusAdd: "1" } });
+          return;
+        }
+
+        if (type === "quickAdd") {
+          const when = String(action.params?.when ?? "in 2 minutes");
+          const title = String(action.params?.title ?? "Quick reminder");
+          router.replace({ pathname: "/(tabs)", params: { quickAdd: when, quickAddTitle: title } });
+          return;
+        }
+
+        if (type === "openImportant") {
+          router.replace({ pathname: "/(tabs)", params: { openImportant: "1" } });
+        }
+      },
+      [router]
+    )
+  );
 
   return (
     <>

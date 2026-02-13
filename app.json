@@ -28,7 +28,8 @@
           "icon": "./assets/images/icon.png",
           "color": "#3b82f6"
         }
-      ]
+      ],
+      "expo-quick-actions"
     ],
     "experiments": {
       "typedRoutes": true
